@@ -1,10 +1,13 @@
 /**
  * SDLbeerlight -
  *
+ * Uses bicolor LED panel: https://www.adafruit.com/product/3054
  *
- * Taken from example https://gist.github.com/ladyada/dbb4e736967dd918f140
+ * This code copies from https://gist.github.com/ladyada/dbb4e736967dd918f140
  *
  * Uses library https://github.com/gauravmm/HT1632-for-Arduino
+ *
+ * @todbot
  *
  */
 
