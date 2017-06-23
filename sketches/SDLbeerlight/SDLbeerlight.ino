@@ -5,7 +5,10 @@
  *
  * This code copies from https://gist.github.com/ladyada/dbb4e736967dd918f140
  *
- * Uses library https://github.com/gauravmm/HT1632-for-Arduino
+ * Uses libraries:
+ * - HT1632 - https://github.com/gauravmm/HT1632-for-Arduino
+ * - FastLED 3.1 - https://github.com/FastLED/FastLED
+ * - Bounce2 - https://github.com/thomasfredericks/Bounce2
  *
  * @todbot
  *
@@ -55,6 +58,7 @@ Bounce debouncer1 = Bounce();
 
 int mode = 0;
 const int msgMaxLen = 32;
+//                       012345678901234567890123
 char msg[ msgMaxLen ] = "hello there how are you";
 int msgPos = 0;
 
@@ -108,7 +112,7 @@ void doLedStrip()
         rainbow();
     }
     else {
-        fadeToBlackBy( leds, NUM_LEDS, 10);
+        fadeToBlackBy( leds, NUM_LEDS, 20);
     }
 
     // send the 'leds' array out to the actual LED strip
@@ -122,21 +126,16 @@ void doLedStrip()
 
 void doPanel()
 {
-    EVERY_N_MILLISECONDS( 300 ) {
+    EVERY_N_MILLISECONDS( 200 ) {
         HT1632.renderTarget(0);
         HT1632.clear();          // Clear the previous image contents:
 
         if( mode ) {
-            // char msgout[9];
-            // strncpy(msgout, msg+msgPos,8); // display is 8 characters across
-            // msgPos++;
-            // if( msgPos == msgMaxLen || msgout[0] == '\0' ) { msgPos = 0; }
-
-            // HT1632.drawText(msgout, 0,0, FONT_5X4, FONT_5X4_END, FONT_5X4_HEIGHT);
-            // HT1632.drawText(msgout, 0,0, FONT_8X4, FONT_8X4_END, FONT_8X4_HEIGHT);
             HT1632.drawText(msg, msgPos, 0, FONT_8X4, FONT_8X4_END, FONT_8X4_HEIGHT);
-            msgPos--; if( msgPos < -msgMaxLen ) { msgPos = 0; }
-
+            Serial.println(msgPos);
+            msgPos--;
+            if( msgPos < -(msgMaxLen * 4) ) { msgPos = 0; } // 4 pixel wide font_end
+            // if( msgPos < -msgMaxLen ) { msgPos = 0; }
             // Draw a different image based on the frame number:
             if(i++ % 2 == 0) {
                 HT1632.selectChannel(0); // Select the first channel (green)
