@@ -10,6 +10,8 @@
  * - FastLED 3.1 - https://github.com/FastLED/FastLED
  * - Bounce2 - https://github.com/thomasfredericks/Bounce2
  *
+ * Stupid bluetooth implementation by @otrebla333
+ *
  * @todbot
  *
  */
@@ -18,10 +20,14 @@
 #include <font_5x4.h>
 #include <font_8x4.h>
 #include <images.h>
+#include <SoftwareSerial.h>
 
 #define FASTLED_INTERNAL
+#define FASTLED_ALLOW_INTERRUPTS 1
 #include <FastLED.h>
 FASTLED_USING_NAMESPACE
+
+// #include <Adafruit_NeoPixel.h>
 
 #include <Bounce2.h>
 
@@ -36,16 +42,10 @@ const int pinLedStrip    = 7;
 const int pinIn0 = A0;
 const int pinIn1 = A1;
 
-// #define LED_PIN 7
-// #define DISPLAY_CLK  13
-// #define DISPLAY_CS1  12     // first panel's CS pin
-// #define DISPLAY_CS2  7      // second panel's CS pin
-// #define DISPLAY_WR   10
-// #define DISPLAY_DATA 9
 
 #define NUM_LEDS 16
 #define LED_BRIGHTNESS 100
-#define FRAMES_PER_SECOND  120
+#define FRAMES_PER_SECOND  60
 CRGB leds[NUM_LEDS];
 uint8_t gHue;
 
@@ -62,10 +62,43 @@ const int msgMaxLen = 32;
 char msg[ msgMaxLen ] = "hello there how are you";
 int msgPos = 0;
 
+#define BLUETOOTH_MAX_LENGTH 32   //Has to be 2 char more that expected max message length
+                                  //@otrebla333: Should be the same than msgMaxLen?
+
+
+// define this to use software serial, otherwise it will use hardware serial
+#define BT_USE_SWSERIAL
+
+#ifdef BT_USE_SWSERIAL
+//Bluetooth software serial
+SoftwareSerial bluetooth(2,3); // Arudino (RX,TX) - Bluetooth (TX,RX)
+#endif
+
+//String for storing data received from bluetooth
+String rxDataBT;                //Received data
+String messageDisplay;
+//Char arrays for text processing
+char messageDisplayChar[BLUETOOTH_MAX_LENGTH];
+
+//BEER LIGHT GLOBAL STATUS VARIABLE; 0 = OFF
+bool beerLight = 0;
+
+// Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, pinLedStrip, NEO_GRB + NEO_KHZ800);
+
+
 void setup ()
 {
     Serial.begin(115200);
     Serial.println(F("Hello from SDL light!"));
+
+#ifdef BT_USE_SWSERIAL
+    bluetooth.begin(57600);
+    bluetooth.println("Hello");
+#else
+    // make hardware serial act like bluetooth software serial
+    #define bluetooth Serial
+#endif
+    delay(500);
 
     pinMode(pinIn0, INPUT_PULLUP);
     pinMode(pinIn1, INPUT_PULLUP);
@@ -80,6 +113,8 @@ void setup ()
 
     FastLED.addLeds<WS2812, pinLedStrip,GRB>(leds, NUM_LEDS);
     FastLED.setBrightness(LED_BRIGHTNESS);     // set master brightness control
+    // strip.begin();
+    // strip.show(); // Initialize all pixels to 'off'
 }
 
 void loop()
@@ -87,6 +122,11 @@ void loop()
     doInputs();
     doPanel();
     doLedStrip();
+
+    if(listenBluetooth())
+    {
+      analyzeMessage();
+    }
 }
 
 void doInputs()
@@ -107,34 +147,36 @@ void doInputs()
 
 void doLedStrip()
 {
-    if( mode ) {
-        // Call the current pattern function once, updating the 'leds' array
-        rainbow();
-    }
-    else {
-        fadeToBlackBy( leds, NUM_LEDS, 20);
+    EVERY_N_MILLISECONDS( 1000 / FRAMES_PER_SECOND ) {
+
+        if( mode ) {
+            rainbow();
+        }
+        else {
+            fadeToBlackBy( leds, NUM_LEDS, 20);
+        }
+
+        // do some periodic updates
+        EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
+
+        // send the 'leds' array out to the actual LED strip
+        FastLED.show();
     }
 
-    // send the 'leds' array out to the actual LED strip
-    FastLED.show();
-    // insert a delay to keep the framerate modest
-    FastLED.delay(1000/FRAMES_PER_SECOND);
-
-    // do some periodic updates
-    EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
 }
 
 void doPanel()
 {
-    EVERY_N_MILLISECONDS( 200 ) {
+    EVERY_N_MILLISECONDS( 200 ) { //200
         HT1632.renderTarget(0);
         HT1632.clear();          // Clear the previous image contents:
 
         if( mode ) {
             HT1632.drawText(msg, msgPos, 0, FONT_8X4, FONT_8X4_END, FONT_8X4_HEIGHT);
-            Serial.println(msgPos);
+            //Serial.println(msgPos);
             msgPos--;
-            if( msgPos < -(msgMaxLen * 4) ) { msgPos = 0; } // 4 pixel wide font_end
+            //if( msgPos < -(msgMaxLen * 4) ) { msgPos = 0; } // 4 pixel wide font_end
+            if( msgPos < -(messageLength() * 4) ) { msgPos = 32; } // 4 pixel wide font_end
             // if( msgPos < -msgMaxLen ) { msgPos = 0; }
             // Draw a different image based on the frame number:
             if(i++ % 2 == 0) {
@@ -160,29 +202,7 @@ void doPanel()
             }
         }
         HT1632.render();
-
-    /*
-       delay(2000);
-
-       HT1632.renderTarget(0);
-       HT1632.clear();
-       if (~i & 0b01) { // On frames 1 and 3:
-        HT1632.selectChannel(0); // Select the first channel
-        // Draw a heart:
-        HT1632.drawImage(IMG_HEART, IMG_HEART_WIDTH,  IMG_HEART_HEIGHT, 19, 1);
-       }
-       if (~i & 0b10) { // On frames 2 and 3:
-        HT1632.selectChannel(1); // Select the second channel
-        // Draw a heart:
-        HT1632.drawImage(IMG_HEART, IMG_HEART_WIDTH,  IMG_HEART_HEIGHT, 19, 1);
-       }
-       HT1632.drawText("Ada", 2, 2, FONT_5X4, FONT_5X4_END, FONT_5X4_HEIGHT);
-       HT1632.drawText("fruit !", 2, 9, FONT_5X4, FONT_5X4_END, FONT_5X4_HEIGHT);
-
-       // Perform the drawing:
-       HT1632.render();
-     */
- }
+    }
 
 }
 
@@ -190,4 +210,132 @@ void rainbow()
 {
   // FastLED's built-in rainbow generator
   fill_rainbow( leds, NUM_LEDS, gHue, 7);
+}
+
+bool listenBluetooth()
+{
+    if( bluetooth.available()>1 ) //Aqui hay num de bytes disponibles up to 64 bytes
+    {
+      rxDataBT= bluetooth.readStringUntil('\0');
+
+      if (rxDataBT.length()>BLUETOOTH_MAX_LENGTH)
+      {
+          bluetooth.println("Message too long, muy mal");
+      }
+      else
+      {
+        Serial.println(rxDataBT);
+      }
+      return true;
+    }
+    else return false;
+}
+
+void analyzeMessage()
+{
+    bool beer=0;
+    bool on=0;
+    bool off=0;
+    bool please=0;
+    bool badWords=0;
+    bool text=0;
+    bool message=0;
+
+    message = lookForWords("text:");
+
+    if(message)
+    {
+      messageDisplay=rxDataBT.substring(5);
+      messageDisplay.toCharArray(msg,messageDisplay.length());
+    }
+    else
+    {
+        badWords = lookForWords("fuck,fucking,motherfucker");
+        beer=lookForWords("BEER,beer,Beer,cerveza,Cerveza,CERVEZA,light,LIGHT,Light");
+
+        if(badWords)
+            {
+            bluetooth.println("Wow wow calm down, you are not ready for a beer");
+            delay(1000);
+            bluetooth.println("BEER LIGHT HAS BEEN DISABLED FOR 5 MINUTES");
+            for (int i=0;i<20;i++) delay(1000); //delay 300 sec -> 5 min
+            //THIS FOR COMPLETELY STOPS ALL OTHER FUNCTIONS
+            bluetooth.println("TRY AGAIN");
+            }
+
+        else if(beer)
+            {
+                on = lookForWords("ON,on,On,encendida,go,GO,Go");
+                off = lookForWords("OFF,off,Off,NO,no,No,down");
+
+                if(on)
+                {
+                    please = lookForWords("PLEASE,please,Please,PORFAVOR,porfavor,Por favor,Por Favor, por favor, hijo de puta");
+                    if(please)
+                    {
+                        bluetooth.println("Beerlight is ON!");
+                        beerLight = 1;
+                    }
+                    else bluetooth.println("That's not how you ask for beer :[");
+                }
+
+                else if (off)
+                {
+                    bluetooth.println("Beerlight is OFF :(");
+                    beerLight = 0;
+                }
+
+            }
+    }
+}
+
+
+//Looks for a word or words (word1,word2,word3,wordN)in the received bluetooth message, returns true or false
+bool lookForWords(String multipleWords)
+{
+  int currentIndex = 0;
+  int commaIndex=0;
+  String Word;
+
+  //Looks for the first word given in the multipleWords String
+  for (int i=0; i<=multipleWords.length();i++)
+    {
+    commaIndex=multipleWords.indexOf(",",currentIndex);
+    if (commaIndex==0)
+      {
+        if(currentIndex==0)
+          {
+            Word=multipleWords;
+            i=multipleWords.length();
+          }
+      }
+    else
+      {
+        Word=multipleWords.substring(currentIndex,commaIndex); //If no comma, only 1 word
+        currentIndex=commaIndex+1;
+      }
+
+    //Checks that BTlength is equal or longer than the word lenght (-2 added for compensation of real length)
+    if(rxDataBT.length()-2>=Word.length())
+      {
+      //If so, looks for the word in the string
+      for (int i=0; i<=rxDataBT.length() - Word.length();i++)
+        {
+          if(rxDataBT.substring(i,Word.length()+i) == Word) return true;
+        }
+      }
+    }
+  return false;
+
+
+}
+
+int messageLength()
+{
+  int i=0;
+  while(msg[i]!='\0')
+  {
+    i++;
+  }
+  return i;
 }
