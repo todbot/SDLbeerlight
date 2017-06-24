@@ -27,8 +27,6 @@
 #include <FastLED.h>
 FASTLED_USING_NAMESPACE
 
-// #include <Adafruit_NeoPixel.h>
-
 #include <Bounce2.h>
 
 int i = 0;
@@ -41,10 +39,11 @@ const int pinDisplayDATA = 9;
 const int pinLedStrip    = 7;
 const int pinIn0 = A0;
 const int pinIn1 = A1;
+const int pinMP3 = 6;
 
 
-#define NUM_LEDS 16
-#define LED_BRIGHTNESS 100
+#define NUM_LEDS 24
+#define LED_BRIGHTNESS 200
 #define FRAMES_PER_SECOND  60
 CRGB leds[NUM_LEDS];
 uint8_t gHue;
@@ -57,9 +56,13 @@ Bounce debouncer0 = Bounce();
 Bounce debouncer1 = Bounce();
 
 int mode = 0;
+bool soundmode = false;
+uint32_t soundDurationMillis = 5000;
+uint32_t soundStartMillis;
+
 const int msgMaxLen = 32;
 //                       012345678901234567890123
-char msg[ msgMaxLen ] = "hello there how are you";
+char msg[ msgMaxLen ] = "time for beer";
 int msgPos = 0;
 
 #define BLUETOOTH_MAX_LENGTH 32   //Has to be 2 char more that expected max message length
@@ -83,7 +86,8 @@ char messageDisplayChar[BLUETOOTH_MAX_LENGTH];
 //BEER LIGHT GLOBAL STATUS VARIABLE; 0 = OFF
 bool beerLight = 0;
 
-// Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, pinLedStrip, NEO_GRB + NEO_KHZ800);
+//MP3 Player Software Serial
+SoftwareSerial MP3(4,5);
 
 
 void setup ()
@@ -102,6 +106,7 @@ void setup ()
 
     pinMode(pinIn0, INPUT_PULLUP);
     pinMode(pinIn1, INPUT_PULLUP);
+    pinMode(pinMP3, OUTPUT);
     debouncer0.attach(pinIn0);
     debouncer0.interval(50); // interval in ms
     debouncer1.attach(pinIn1);
@@ -113,8 +118,6 @@ void setup ()
 
     FastLED.addLeds<WS2812, pinLedStrip,GRB>(leds, NUM_LEDS);
     FastLED.setBrightness(LED_BRIGHTNESS);     // set master brightness control
-    // strip.begin();
-    // strip.show(); // Initialize all pixels to 'off'
 }
 
 void loop()
@@ -122,10 +125,26 @@ void loop()
     doInputs();
     doPanel();
     doLedStrip();
+    doSound();
 
     if(listenBluetooth())
     {
       analyzeMessage();
+    }
+
+}
+//7E FF 06 03 00 00 01 EF
+
+// turn on or off the beer light
+void toggleLight()
+{
+    mode = !mode;
+    if( mode ) {
+        soundmode = true;
+        soundStartMillis = millis();
+    }
+    else {
+        soundmode = false;
     }
 }
 
@@ -136,11 +155,12 @@ void doInputs()
 
     if( debouncer0.fell() ) {
         Serial.print(F("Button0: push! mode:")); Serial.println(mode);
-        mode = !mode;
+        toggleLight();
     }
 
     if( debouncer1.fell() ) {
         Serial.print(F("Button1: push! mode:")); Serial.println(mode);
+        toggleLight();
     }
 
 }
@@ -157,7 +177,7 @@ void doLedStrip()
         }
 
         // do some periodic updates
-        EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
+        EVERY_N_MILLISECONDS( 10 ) { gHue++; } // slowly cycle the "base color" through the rainbow
 
         // send the 'leds' array out to the actual LED strip
         FastLED.show();
@@ -239,9 +259,13 @@ void analyzeMessage()
     bool please=0;
     bool badWords=0;
     bool text=0;
+    bool play=0;
     bool message=0;
 
     message = lookForWords("text:");
+    play= lookForWords("play");
+
+    if (play)MP3.println(0x7E18);
 
     if(message)
     {
@@ -250,7 +274,7 @@ void analyzeMessage()
     }
     else
     {
-        badWords = lookForWords("fuck,fucking,motherfucker");
+        badWords = lookForWords("fuck,fucking,motherfucker,shit");
         beer=lookForWords("BEER,beer,Beer,cerveza,Cerveza,CERVEZA,light,LIGHT,Light");
 
         if(badWords)
@@ -275,6 +299,7 @@ void analyzeMessage()
                     {
                         bluetooth.println("Beerlight is ON!");
                         beerLight = 1;
+                        toggleLight();
                     }
                     else bluetooth.println("That's not how you ask for beer :[");
                 }
@@ -283,6 +308,7 @@ void analyzeMessage()
                 {
                     bluetooth.println("Beerlight is OFF :(");
                     beerLight = 0;
+                    toggleLight();
                 }
 
             }
@@ -338,4 +364,14 @@ int messageLength()
     i++;
   }
   return i;
+}
+
+void doSound()
+{
+    // if( soundmode ) {
+        if( (millis() - soundStartMillis) > soundDurationMillis ) {
+            soundmode = false;
+        }
+    // }
+    digitalWrite(pinMP3,!soundmode);
 }
