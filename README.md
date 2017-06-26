@@ -22,3 +22,4 @@ Dan, if you want to change things:
 ![front](docs/sdlbeerlight-front.jpg)
 ![back](docs/sdlbeerlight-back.jpg)
 ![back-annotated](docs/sdlbeerlight-back-annotated.jpg)
+![inuse](docs/sdlbeerlight-in-use-alberto.jpg)
