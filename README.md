@@ -1,8 +1,8 @@
 # SDLbeerlight
 
-An overly complicated light for announcing a certain time of day (or state of mind)
+An overly complicated light for announcing a certain time of day (or state of mind).  Created by 0x02 Design Lab Residents.
 
-It consists of:
+The Beer Light consists of:
 
 - Arduino Uno running sketch in this repo
 - Custom Arduino shield acting as breakout board for the following modules:
